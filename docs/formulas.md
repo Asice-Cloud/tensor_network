@@ -5,10 +5,13 @@
 ## 基本物理设定
 无量纲单位，取 ℏ = 1，m = 1。粒子被限制在区间 [0, a] 的无限深势阱中：
 
+$$
 V(x) = \begin{cases}
 0, & 0 < x < a \\
 \infty, & \text{otherwise}
 \end{cases}
+$$
+
 
 边界条件：ψ(0,t) = ψ(a,t) = 0。
 
@@ -17,7 +20,7 @@ V(x) = \begin{cases}
 在无外场和无势能（势为 0）区域内，TDSE 为：
 
 $$
- i \hbar \frac{\partial}{\partial t} \psi(x,t) = -\frac{\hbar^2}{2m} \frac{\partial^2}{\partial x^2} \psi(x,t)
+i \hbar \frac{\partial}{\partial t} \psi(x,t) = -\frac{\hbar^2}{2m} \frac{\partial^2}{\partial x^2} \psi(x,t)
 $$
 
 在无量纲化（\(\hbar=1, m=1\)）后：
@@ -133,17 +136,10 @@ $$
 $$
 
 ## 数值实现注意事项
+
 - 空间网格：脚本使用等间距网格 `x = linspace(0,a,Nx)`，并在边界处强制 ψ=0。增大 `Nx` 可以提高投影与积分的精度。
 - 模式截断：使用 `N` 个本征态。对于不光滑的初始条件（如 piecewise），需要更大的 `N` 来减小截断误差。
 - 积分：使用 `numpy.trapezoid`（等间距梯形法）进行数值积分。
 - 单位：脚本使用无量纲单位（ℏ=1,m=1）。如果要使用真实物理单位，请在脚本中传入物理常数并相应调整时间范围。
 - 动画：脚本用本征态展开按时刻生成 |ψ(x,t)|^2 的帧并用 `matplotlib.animation` 保存 GIF（PillowWriter）或在必要时回退到 MP4（FFMpegWriter）。
 
-## 推荐参数（经验值）
-- 平滑的初始条件（如高斯）：`Nx=800, N=120` 常常足够。  
-- 不光滑的条件（piecewise）：建议 `N>=400` 并适当增大 `Nx`。
-- 帧数/平滑动画：在时间区间内生成 40-200 帧，根据动画长度与帧率调整。
-
----
-
-如果你要我把这些公式再转成 PDF、LaTeX 文件，或者在仓库 README 中引用此文档，我可以继续处理。
