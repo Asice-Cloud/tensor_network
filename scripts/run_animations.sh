@@ -18,9 +18,11 @@ cd "$ROOT_DIR"
 a=1.0
 # spatial resolution (number of x points)
 Nx=1200
-# number of eigenmodes to project onto
+# legacy parameter: number of eigenmodes (kept for CLI compatibility,
+# ignored by FFT-based free-particle propagator)
 N=400
 # presets to generate, choose from: 2x piecewise gauss eigen1 eigen2 superpos12
+# presets to generate (supported by the FFT free-particle code)
 PRESETS=(2x piecewise gauss eigen1 eigen2 superpos12)
 # animation framing mode: either provide explicit frame list via TIMES or use FRAMES/TSTART/TEND
 # if TIMES is non-empty it will be preferred (list of time points)
@@ -28,8 +30,8 @@ TIMES=()
 # or use frames/tstart/tend/fps for smoother animations
 FRAMES=400
 TSTART=0.0
-TEND=5.0
-FPS=12
+TEND=1.0
+FPS=30
 # output directory
 OUT_DIR="sim"
 # whether to animate (true/false)
@@ -45,6 +47,7 @@ mkdir -p "$OUT_DIR"
 
 echo "Using python: $PY"
 echo "Generating animations for presets: ${PRESETS[*]}"
+echo "Mode: free-particle spectral propagation (FFT) on [0,a] with periodic BC"
 
 # Apply smoke overrides if requested
 if [ "$SMOKE" = true ]; then
@@ -66,7 +69,7 @@ for preset in "${PRESETS[@]}"; do
 
   echo "\n--- Running preset: $preset -> $out_file ---"
 
-  # build base command
+  # build base command (keep --N for backward compatibility but code ignores it)
   cmd=("$PY" "sim/particle_in_well.py" "--init" "$preset" "--a" "$a" "--Nx" "$Nx" "--N" "$N")
 
   # timing args: prefer explicit TIMES if provided

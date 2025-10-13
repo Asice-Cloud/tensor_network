@@ -1,31 +1,24 @@
 #!/usr/bin/env python3
 """
-Time evolution of an electron in an infinite square well [0, a].
+Time evolution of a free particle on [0, a] using a spectral (FFT) method.
 
-Uses expansion in energy eigenstates (sin basis) and computes
-psi(x,t) = sum_n c_n phi_n(x) exp(-i E_n t / hbar).
+This code assumes periodic boundary conditions on [0,a]. The free-particle
+time evolution is diagonal in k-space: psi_k(t) = psi_k(0) * exp(-i E_k t / hbar)
+with E_k = (hbar^2 k^2)/(2m). We compute psi(x,t) via FFT/IFFT.
 
-Three example initial conditions are provided (match user's request):
- - "2x": psi(x)=2*x on [0,a]
- - "piecewise": psi(x)=x+5 for 0<x<a/2, and a/2+5-x for a/2<x<a
- - "custom": user-provided small lambda in the code
+The script keeps several initial-condition presets (adapted for periodic BC):
+ - "2x": psi(x)=2*x (periodic continuation; may be discontinuous at boundaries)
+ - "piecewise": piecewise linear bump
+ - "gauss": centered Gaussian
+ - "eigen1", "eigen2": plane-wave modes with k = 2*pi*n/a
 
-Produces a multi-panel PNG showing |psi(x,t)|^2 at selected times and
-prints probability conservation diagnostics.
+Produces PNG/GIF outputs of |psi(x,t)|^2 and prints probability diagnostics.
 """
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy import pi
 from matplotlib import animation
-
-
-def eigenfunc(n, x, a):
-    return np.sqrt(2.0 / a) * np.sin(n * pi * x / a)
-
-
-def energy(n, a, hbar=1.0, m=1.0):
-    return (n ** 2) * (pi ** 2) * (hbar ** 2) / (2.0 * m * a ** 2)
 
 
 def initial_psi(x, a, choice):
@@ -50,35 +43,42 @@ def initial_psi(x, a, choice):
         xc = 0.5 * a
         sigma = 0.08 * a
         psi = np.exp(-0.5 * ((x - xc) / sigma) ** 2)
-    # set zero outside (0,a)
-    psi[(x <= 0) | (x >= a)] = 0.0
+    # for periodic/free-particle we do not zero the endpoints; x is assumed
+    # to be on [0,a) (endpoint=False) when called from main
     # return complex normalized wavefunction
     psi_c = psi.astype(complex)
-    norm = np.trapezoid(np.abs(psi_c) ** 2, x)
+    # use Riemann-sum normalization consistent with FFT: integral ≈ dx * sum(|ψ|^2)
+    dx = x[1] - x[0]
+    norm = dx * np.sum(np.abs(psi_c) ** 2)
     if norm == 0:
         return psi_c
     return psi_c / np.sqrt(norm)
 
 
-def project_coefficients(psi0, x, a, N):
-    # compute c_n = <phi_n | psi0>
-    c = np.zeros(N, dtype=complex)
-    for n in range(1, N + 1):
-        phi_n = eigenfunc(n, x, a)
-        c[n - 1] = np.trapezoid(np.conjugate(phi_n) * psi0, x)
-    return c
+def psi_at_times_fft(psi0, x, times, hbar=1.0, m=1.0):
+    """Propagate initial psi0 on grid x for the list of times using FFT.
 
+    Assumes x is uniformly spaced on [0,a) (endpoint=False) so that FFT
+    corresponds to periodic boundary conditions.
+    """
+    Nx = len(x)
+    dx = x[1] - x[0]
+    # domain length a
+    a = dx * Nx
 
-def psi_at_times(c, x, a, times, hbar=1.0, m=1.0):
-    N = len(c)
-    psi_t = np.zeros((len(times), len(x)), dtype=complex)
+    # angular wavenumbers consistent with numpy.fft (rad/m)
+    k = 2.0 * pi * np.fft.fftfreq(Nx, d=dx)
+
+    psi_k0 = np.fft.fft(psi0)
+    psi_t = np.zeros((len(times), Nx), dtype=complex)
+    prefactor = (1j * hbar)  # used to form exp(-i E t / hbar)
+    # energy in k: E_k = (hbar^2 k^2)/(2m)
+    Ek_over_hbar = (hbar * (k ** 2)) / (2.0 * m)
     for idx, t in enumerate(times):
-        s = np.zeros_like(x, dtype=complex)
-        for n in range(1, N + 1):
-            En = energy(n, a, hbar=hbar, m=m)
-            phi_n = eigenfunc(n, x, a)
-            s += c[n - 1] * phi_n * np.exp(-1j * En * t / hbar)
-        psi_t[idx] = s
+        phase = np.exp(-1j * Ek_over_hbar * t)
+        psi_k_t = psi_k0 * phase
+        psi_x_t = np.fft.ifft(psi_k_t)
+        psi_t[idx] = psi_x_t
     return psi_t
 
 
@@ -109,44 +109,44 @@ def main():
     else:
         times = np.array(args.times)
 
-    x = np.linspace(0.0, a, Nx)
+    # For FFT-based propagation we prefer x on [0,a) so the grid wraps periodically.
+    x = np.linspace(0.0, a, Nx, endpoint=False)
+
+    # presets adapted for periodic BC. 'eigen' presets are simple plane waves
+    # with k = 2*pi*n / a (periodic modes)
+    def plane_wave(n):
+        k = 2.0 * pi * n / a
+        return np.exp(1j * k * x)
 
     presets = {
         '2x': lambda: initial_psi(x, a, '2x'),
         'piecewise': lambda: initial_psi(x, a, 'piecewise'),
         'gauss': lambda: initial_psi(x, a, 'gauss'),
-        'eigen1': lambda: eigenfunc(1, x, a).astype(complex),
-        'eigen2': lambda: eigenfunc(2, x, a).astype(complex),
-        'superpos12': lambda: (eigenfunc(1, x, a) + eigenfunc(2, x, a)).astype(complex) / np.sqrt(2.0),
+        'eigen1': lambda: plane_wave(1).astype(complex),
+        'eigen2': lambda: plane_wave(2).astype(complex),
+        'superpos12': lambda: (plane_wave(1) + plane_wave(2)).astype(complex) / np.sqrt(2.0),
     }
 
     def run_for_preset(name, psi0_local):
         print(f"Running preset: {name}")
         psi0 = psi0_local
-        # project
-        c = project_coefficients(psi0, x, a, N)
 
-        # report norm of psi0 and sum |c_n|^2
-        norm0 = np.trapezoid(np.abs(psi0) ** 2, x)
-        prob_modes = np.sum(np.abs(c) ** 2)
+        # report norm of psi0 (use dx * sum for consistency with FFT)
+        dx = x[1] - x[0]
+        norm0 = dx * np.sum(np.abs(psi0) ** 2)
         print(f"Initial normalization (∫|ψ|^2 dx) = {norm0:.8f}")
-        print(f"Sum |c_n|^2 over {N} modes = {prob_modes:.8f}")
 
-        psi_t = psi_at_times(c, x, a, times)
+        # propagate via FFT-based free-particle propagator
+        psi_t = psi_at_times_fft(psi0, x, times)
 
         # probability conservation check and plotting
-        probs = [np.trapezoid(np.abs(psi_t[i]) ** 2, x) for i in range(len(times))]
+        probs = [dx * np.sum(np.abs(psi_t[i]) ** 2) for i in range(len(times))]
         for t, p in zip(times, probs):
             print(f"t={t:.6g}: ∫|ψ|^2 dx = {p:.8f}")
 
         save_base = args.out
         if args.animate:
-            # if animate and out endswith .gif, replace base name
-            base = save_base
-            if save_base.endswith('.gif') or save_base.endswith('.mp4'):
-                base = save_base.rsplit('.', 1)[0]
             out_name = f"sim/pw_{name}.gif"
-            # reuse animation code block
             fig, ax = plt.subplots(figsize=(6, 4))
             line, = ax.plot([], [], lw=2)
             ax.set_xlim(0, a)
@@ -172,7 +172,6 @@ def main():
             except Exception as e:
                 print(f"Failed to save GIF for {name}: {e}")
         else:
-            # static plot per preset
             fig, ax = plt.subplots(figsize=(6, 4))
             ax.plot(x, np.abs(psi_t[0]) ** 2)
             ax.set_xlim(0, a)
@@ -187,19 +186,12 @@ def main():
             run_for_preset(name, fn())
         return
 
+
     psi0 = presets[args.init]() if args.init in presets else initial_psi(x, a, args.init if args.init != 'gauss' else 'gauss')
 
-    print(f"Using box a={a}, Nx={Nx}, N_modes={N}")
-    # project
-    c = project_coefficients(psi0, x, a, N)
+    print(f"Using box a={a}, Nx={Nx}")
 
-    # report norm of psi0 and sum |c_n|^2
-    norm0 = np.trapezoid(np.abs(psi0) ** 2, x)
-    prob_modes = np.sum(np.abs(c) ** 2)
-    print(f"Initial normalization (∫|ψ|^2 dx) = {norm0:.8f}")
-    print(f"Sum |c_n|^2 over {N} modes = {prob_modes:.8f}")
-
-    psi_t = psi_at_times(c, x, a, times)
+    psi_t = psi_at_times_fft(psi0, x, times)
 
     # probability conservation check and plotting
     probs = [np.trapezoid(np.abs(psi_t[i]) ** 2, x) for i in range(len(times))]
