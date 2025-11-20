@@ -9,6 +9,11 @@ Fibonacci anyon demo (small):
 
 Usage: python3 fibonacci_anyons.py
 """
+
+#用F,R构造辨群,结合规则是 tau*tau = 1 + tau
+#F把基从 (ττ)_a τ -> τ 变换到 τ (ττ)_a -> τ
+#R是交换两个tau anyons时的相位
+
 import numpy as np
 
 
@@ -20,6 +25,7 @@ def fibonacci_F():
     """Return the F-matrix for tau,tau,tau -> tau fusion in the basis { (ττ)_1 τ -> τ, (ττ)_τ τ -> τ }
     Standard convention (one common choice):
     F = [[φ^{-1}, φ^{-1/2}], [φ^{-1/2}, -φ^{-1}]]
+    Base transformation matrix for changing fusion order.
     """
     ph = phi()
     inv = 1.0 / ph
@@ -34,6 +40,7 @@ def fibonacci_R():
       R^{1}_{ττ} = exp(-4π i / 5)
       R^{τ}_{ττ} = exp( 3π i / 5)
     See literature on Fibonacci anyons / SU(2)_3.
+    Exchange phases for two τ anyons.
     """
     R1 = np.exp(-4j * np.pi / 5)
     Rtau = np.exp(3j * np.pi / 5)
